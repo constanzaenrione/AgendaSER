@@ -788,6 +788,7 @@
         <button class="nav-tab" onclick="mostrarVista('todasActividades')">📋 Actividades</button>
         <button class="nav-tab" onclick="mostrarVista('agenda')">📅 Agenda</button>
         <button class="nav-tab" onclick="mostrarVista('gantt')">🗂️ Carta Gantt</button>
+        <button class="nav-tab" onclick="mostrarVista('condicionSistema')">🧩 Condición y sistema<span id="csInsignia"></span></button>
         <button class="nav-tab" onclick="mostrarVista('planificador')">🗓️ Planificador</button>
         <button class="nav-tab" onclick="mostrarVista('habitos')">⚡ Hábitos</button>
         <button class="nav-tab" onclick="mostrarVista('rituales')">🌟 Rituales</button>
@@ -1124,6 +1125,16 @@
         </div>
 
         <!-- RUTINA DE PODER -->
+        <div id="condicionSistema" class="view">
+            <div class="card">
+                <h2 class="card-title">🧩 Mi condición y sistema</h2>
+                <p class="gx-intro">No basta con saber qué acciones necesitas hacer: necesitas crear las condiciones y los sistemas que te permitan sostenerlas. Aquí descubrimos qué le falta a lo que no logras sostener.</p>
+                <div id="csPatrones"></div>
+                <div id="csConversacion"></div>
+                <div id="csRegistro"></div>
+            </div>
+        </div>
+
         <div id="rutinaPoder" class="view">
             <div class="card">
                 <h2 class="card-title">🌅 Rutina de Poder</h2>
@@ -1752,6 +1763,27 @@
         </div>
     </div>
 
+    <div id="modalCondicionCS" class="modal">
+        <div class="modal-content" style="max-width:520px;">
+            <div class="modal-header">
+                <h2 class="modal-title">Condición y sistema</h2>
+                <button class="close-btn" onclick="cerrarModal('modalCondicionCS')">&times;</button>
+            </div>
+            <div class="form-group"><label class="form-label">Proyecto</label><select class="form-select" id="csCoProyecto"></select></div>
+            <div class="form-group"><label class="form-label">Fecha</label><input type="date" class="form-input" id="csCo_fecha"></div>
+            <div class="form-group"><label class="form-label">Acción</label><input type="text" class="form-input" id="csCo_accion" placeholder="La acción que no logro sostener"></div>
+            <div class="form-group"><label class="form-label">Qué ocurrió</label><textarea class="form-textarea" id="csCo_ocurrio" style="min-height:54px;"></textarea></div>
+            <div class="form-group"><label class="form-label">Qué lo dificulta</label><textarea class="form-textarea" id="csCo_dificulto" style="min-height:54px;"></textarea></div>
+            <div class="form-group"><label class="form-label">Mi condición (lo que debe estar presente)</label><textarea class="form-textarea" id="csCo_necesito" style="min-height:54px;"></textarea></div>
+            <div class="form-group"><label class="form-label">Mi sistema (lo que la sostiene)</label><textarea class="form-textarea" id="csCo_ajuste" style="min-height:54px;"></textarea></div>
+            <div class="form-group"><label class="form-label">Fecha de prueba</label><input type="date" class="form-input" id="csCo_fechaPrueba"></div>
+            <div class="form-group"><label class="form-label">Resultado</label>
+                <select class="form-select" id="csCo_resultado"><option>Por medir</option><option>Funcionó</option><option>Funcionó a medias</option><option>No funcionó</option></select></div>
+            <p id="csCoError" style="color:var(--red); font-size:0.85rem; min-height:1.2em;"></p>
+            <button type="button" class="btn btn-primary" onclick="csGuardarModalCondicion()">Guardar</button>
+        </div>
+    </div>
+
     <div id="modalAuth" class="modal">
         <div class="modal-content" style="max-width:400px;">
             <div class="modal-header">
@@ -2066,6 +2098,7 @@
             if (vista === 'agenda') renderizarAgenda();
             if (vista === 'gantt') renderizarGantt();
             if (vista === 'planificador') renderizarPlanificador();
+            if (vista === 'condicionSistema') renderizarCondicionSistema();
             if (vista === 'habitos') { renderizarHabitos(); if (vistaHabitosActual === 'dashboard') renderizarDashboardHabitos(); }
             if (vista === 'rituales') renderizarRituales();
             if (vista === 'rutinaPoder') renderizarRutinasPoder();
@@ -2662,6 +2695,8 @@
         function guardarActividadData(actividad, id) {
             if (id) {
                 const index = appData.actividades.findIndex(a => a.id === parseInt(id));
+                const previa = appData.actividades[index];
+                if (previa) { csAnotarReprogramacion(previa, actividad.fecha); actividad.reprog = previa.reprog; }
                 appData.actividades[index] = actividad;
             } else {
                 appData.actividades.push(actividad);
@@ -4540,7 +4575,7 @@
             const cont = document.getElementById('ganttCondContenido');
             const lista = (appData.ganttCondiciones || []).filter(c => c.proyectoId === proyectoId)
                 .sort((x, y) => (y.fecha || '').localeCompare(x.fecha || '') || y.id - x.id);
-            let html = `<p class="gx-intro">No basta con saber qué acciones necesita tu negocio: necesitas crear las condiciones y sistemas que te permitan sostenerlas. Cuando una acción no se sostiene, anótala aquí.</p>`;
+            let html = csAvisoParaGantt(proyectoId) + `<p class="gx-intro">No basta con saber qué acciones necesita tu negocio: necesitas crear las condiciones y sistemas que te permitan sostenerlas. Cuando una acción no se sostiene, anótala aquí.</p>`;
 
             if (ganttCondEditando !== null) {
                 const c = ganttCondEditando === 'nuevo' ? (ganttCondBorrador || { fecha: hoyLocal(), resultado: 'Por medir' }) : (lista.find(x => x.id === ganttCondEditando) || {});
@@ -4613,13 +4648,13 @@
             }
             ganttCondEditando = null; ganttCondBorrador = null;
             guardarDatos();
-            renderizarGantt();
+            renderizarTodo();
         }
         function eliminarCondicionGantt(id) {
             if (!confirm('¿Eliminar este registro?')) return;
             appData.ganttCondiciones = (appData.ganttCondiciones || []).filter(c => c.id !== id);
             guardarDatos();
-            renderizarGantt();
+            renderizarTodo();
         }
         function condicionDesdeActividadGantt(actividadId) {
             const a = appData.actividades.find(x => x.id === actividadId);
@@ -5413,6 +5448,7 @@
             if (!act) return;
             const fecha = new Date(act.fecha);
             fecha.setDate(fecha.getDate() + deltaDias);
+            csAnotarReprogramacion(act, fechaHoraLocal(fecha));
             act.fecha = fechaHoraLocal(fecha);
             guardarDatos();
             renderizarTodo();
@@ -6250,6 +6286,7 @@
             renderizarCreencias();
             poblarJornada();
             if (typeof renderizarListaTextosPersonalizados === 'function') renderizarListaTextosPersonalizados();
+            if (typeof csActualizarInsignia === 'function') { csActualizarInsignia(); if (document.getElementById('condicionSistema').classList.contains('active')) renderizarCondicionSistema(); }
         }
 
         // ===================== DIARIO =====================
@@ -6969,6 +7006,595 @@
             guardarDatos();
             cerrarEditorTexto();
             aplicarTextosPersonalizados();
+        }
+
+
+        // ===================== MI CONDICIÓN Y SISTEMA =====================
+        // Lee el avance diario (Carta Gantt + Diario + actividades), detecta lo que se repite y ayuda a encontrar
+        // la condición (lo que debe existir) y el sistema (lo que la sostiene).
+        // Datos: appData.ganttCondiciones (compartido con la Carta Gantt), appData.patronesDescartados, appData.conversacionesCondicion
+        const CS_VENTANA_DIAS = 45;
+
+        const CS_CATEGORIAS = {
+            energia: {
+                icono: '🔋', nombre: 'Energía y descanso',
+                palabras: ['cansad', 'agotad', 'sin energia', 'sin fuerzas', 'dormi mal', 'dormi poco', 'sueno', 'fatiga', 'baja energia', 'bajon', 'sin pilas', 'no di mas'],
+                dificulta: 'Llego sin energía suficiente al momento de hacerla.',
+                condicion: 'Energía y descanso suficientes antes de esta acción.',
+                sistema: 'Ponerla en mi hora de mayor energía, con una pausa corta antes y sin otra tarea pesada justo antes.',
+                pregunta: '¿A qué hora del día sientes más energía, y en qué momento estaba esta acción en tu agenda?',
+                opcionesCondicion: ['Dormir lo suficiente la noche anterior', 'Hacerla en mi hora de más energía', 'Una pausa real antes de empezar', 'Comer y tomar agua antes'],
+                opcionesSistema: ['Moverla a mi hora de mayor energía', 'Pausa de 10 minutos antes de empezar', 'Hacer solo la versión mínima los días de poca energía', 'Alarma de descanso a la misma hora cada noche']
+            },
+            emocion: {
+                icono: '🫀', nombre: 'Seguridad y emoción',
+                palabras: ['miedo', 'inseguri', 'verguenza', 'no me atrevi', 'ansiedad', 'nervios', 'nerviosa', 'duda', 'me bloquee', 'bloqueo', 'panico', 'temor', 'que dira', 'me juzguen', 'impostora', 'no soy capaz', 'no me siento lista'],
+                dificulta: 'Aparece miedo o inseguridad justo antes de actuar.',
+                condicion: 'Sentirme segura en el cuerpo antes de actuar.',
+                sistema: 'Ritual corto de regulación (respirar y soltar el cuerpo) antes de empezar, y una versión muy pequeña de la acción para partir.',
+                pregunta: 'Cuando se acerca el momento, ¿dónde lo sientes en el cuerpo, y qué frase te dices en ese instante?',
+                opcionesCondicion: ['Calmar mi cuerpo antes de actuar', 'Tener a alguien que me acompañe o me mire', 'Saber que puedo equivocarme sin consecuencias', 'Practicar primero en pequeño'],
+                opcionesSistema: ['Respirar 3 minutos antes de empezar', 'Hacer solo el primer paso de 5 minutos', 'Contárselo a una persona de confianza antes', 'Una frase de seguridad escrita a la vista']
+            },
+            claridad: {
+                icono: '🧭', nombre: 'Claridad del siguiente paso',
+                palabras: ['no sabia', 'confund', 'sin claridad', 'no entendi', 'por donde', 'no tengo claro', 'no se como', 'perdida', 'no sabia que hacer', 'sin rumbo', 'no se por donde'],
+                dificulta: 'No tengo claro cuál es el primer paso concreto.',
+                condicion: 'Saber exactamente cuál es el siguiente paso antes de sentarme.',
+                sistema: 'Dejar escrito, la noche anterior, el primer paso de 10 minutos y lo que necesito para hacerlo.',
+                pregunta: 'Si tuvieras que explicarle a otra persona el primer paso, ¿qué le dirías? ¿Dónde se te enreda?',
+                opcionesCondicion: ['Un primer paso claro y pequeño', 'Tener a mano lo que necesito', 'Un ejemplo de cómo se hace', 'Alguien a quien preguntar'],
+                opcionesSistema: ['Escribir el primer paso la noche anterior', 'Dividir la acción en pasos de 15 minutos', 'Buscar un modelo o ejemplo antes de empezar', 'Una pregunta fija a mi mentora cada semana']
+            },
+            tiempo: {
+                icono: '⏳', nombre: 'Tiempo protegido',
+                palabras: ['no tuve tiempo', 'sin tiempo', 'falta de tiempo', 'interrup', 'imprevisto', 'urgencia', 'hijos', 'familia', 'reunion', 'cliente urgente', 'se me junto', 'se me lleno', 'no alcance', 'no me dio el tiempo'],
+                dificulta: 'El día se llena con otras cosas y no queda espacio.',
+                condicion: 'Un espacio de tiempo protegido solo para esta acción.',
+                sistema: 'Bloque fijo en mi agenda, aviso a quienes me rodean y una regla clara para las interrupciones.',
+                pregunta: '¿Qué te quita normalmente ese espacio? ¿Qué sí podrías proteger, aunque sea poco?',
+                opcionesCondicion: ['Un bloque fijo solo para esto', 'Que mi entorno sepa que no estoy disponible', 'Menos cosas en el mismo día', 'Un plan B para los imprevistos'],
+                opcionesSistema: ['Bloque fijo en el Planificador, con alarma', 'Avisar a mi familia o equipo mi horario', 'Máximo 3 acciones por día', 'Si me interrumpen, retomo en el siguiente bloque ese mismo día']
+            },
+            evitacion: {
+                icono: '🌀', nombre: 'Arranque sin fricción',
+                palabras: ['posterg', 'evit', 'deje para', 'procrastin', 'flojera', 'pereza', 'sin ganas', 'no tuve ganas', 'me distraje', 'redes', 'celular', 'scroll', 'lo deje', 'manana lo hago', 'otra cosa', 'me puse a'],
+                dificulta: 'Me pongo a hacer otra cosa antes de empezar.',
+                condicion: 'Que empezar sea fácil y sin distracciones a la vista.',
+                sistema: 'Regla de los 5 minutos: me siento, abro lo que necesito y trabajo solo 5 minutos. Celular fuera de la vista.',
+                pregunta: '¿Qué hiciste en lugar de la acción, y qué sentiste justo antes de cambiar de tarea?',
+                opcionesCondicion: ['Un punto de partida muy fácil', 'Sin distracciones a la vista', 'Saber que solo son unos minutos', 'Un lugar y una hora fijos'],
+                opcionesSistema: ['Regla de 5 minutos', 'Celular en otra habitación mientras trabajo', 'Dejar abierto lo que necesito desde la noche anterior', 'Empezar por la parte más pequeña']
+            },
+            sobrecarga: {
+                icono: '🎒', nombre: 'Carga realista',
+                palabras: ['demasiad', 'abruma', 'sobrecarg', 'muchas cosas', 'estres', 'saturad', 'no doy abasto', 'agobio', 'todo junto', 'mucho por hacer'],
+                dificulta: 'Tengo más cosas de las que caben en el día.',
+                condicion: 'Una carga de trabajo que sí cabe en mi día.',
+                sistema: 'Máximo 3 acciones por día, y revisar cada semana qué sale de la lista.',
+                pregunta: 'De todo lo que tienes, ¿qué es realmente imprescindible esta semana y qué puede esperar?',
+                opcionesCondicion: ['Menos acciones al mismo tiempo', 'Saber qué es lo esencial de la semana', 'Soltar lo que no es mío', 'Un respiro entre acciones'],
+                opcionesSistema: ['Máximo 3 acciones al día', 'Revisión de 10 minutos cada domingo', 'Mover lo que no es esencial a "Sin agendar"', 'Delegar o pedir ayuda con una fecha']
+            },
+            apoyo: {
+                icono: '🤝', nombre: 'Apoyo o herramienta',
+                palabras: ['me falto', 'no tenia', 'necesito ayuda', 'no se usar', 'herramienta', 'tecnic', 'esperando respuesta', 'esperando a', 'sin acceso', 'depende de', 'no tengo el'],
+                dificulta: 'Me falta una herramienta, información o ayuda para avanzar.',
+                condicion: 'Tener a mano la herramienta, el dato o la ayuda que necesito.',
+                sistema: 'Lista de lo que me falta con una fecha para pedirlo, y a quién se lo pido.',
+                pregunta: '¿Qué te faltó exactamente? ¿Quién o qué podría dártelo, y cuándo lo pedirías?',
+                opcionesCondicion: ['Tener la herramienta lista', 'Una persona que me ayude con esto', 'La información que me falta', 'Un tutorial o guía paso a paso'],
+                opcionesSistema: ['Lista de lo que me falta, revisada los lunes', 'Pedir ayuda el mismo día que lo noto', 'Reservar 30 minutos para aprender la herramienta', 'Acordar una hora fija de consulta con quien me apoya']
+            },
+            perfeccionismo: {
+                icono: '💎', nombre: 'Permiso de lo imperfecto',
+                palabras: ['perfecto', 'perfecci', 'no estaba listo', 'no estaba lista', 'no quedo', 'todavia no esta', 'falta pulir', 'no me convence', 'no me gusto', 'no esta bien'],
+                dificulta: 'Espero que quede perfecto y por eso no lo termino ni lo publico.',
+                condicion: 'Permiso para entregar una versión suficientemente buena.',
+                sistema: 'Fecha de entrega fija, versión al 70% y una sola ronda de ajustes.',
+                pregunta: '¿Qué pasaría si lo entregas al 70%? ¿Qué es lo peor que imaginas que ocurriría?',
+                opcionesCondicion: ['Permiso de entregar algo imperfecto', 'Una fecha de entrega que no se mueve', 'Saber cuándo "es suficiente"', 'Alguien que me diga "ya está listo"'],
+                opcionesSistema: ['Versión al 70% con fecha de entrega', 'Una sola ronda de ajustes', 'Publicar primero, mejorar después', 'Temporizador: 45 minutos y se entrega']
+            }
+        };
+
+        function csNorm(s) { return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+        function csFechaMenosDias(n) { const d = new Date(); d.setDate(d.getDate() - n); return fechaHoraLocal(d).slice(0, 10); }
+        function csNombreProyecto(id) { const p = appData.proyectos.find(x => x.id === id); return p ? p.nombre : ''; }
+
+        // Todo lo que la persona escribió con sus palabras (Carta Gantt, Diario, actividades)
+        function csFuentesTexto(desde) {
+            const out = [];
+            const ETQ = { resultado: 'Resultado del día', nota: 'Nota del día', avance: '¿Qué avancé?', costo: '¿Dónde me detuve o qué me costó?', descubri: '¿Qué descubrí?', necesito: '¿Qué necesito para continuar?' };
+            Object.keys(appData.ganttPlan || {}).forEach(pid => {
+                const dias = (appData.ganttPlan[pid] && appData.ganttPlan[pid].dias) || {};
+                Object.keys(dias).forEach(f => {
+                    if (f < desde) return;
+                    Object.keys(ETQ).forEach(k => { const t = dias[f] && dias[f][k]; if (t && String(t).trim()) out.push({ fecha: f, fuente: 'Carta Gantt', proyectoId: parseInt(pid), etiqueta: ETQ[k], texto: String(t) }); });
+                });
+            });
+            const ED = { comoLlego: 'Cómo llegué', pendiente: 'Pendiente', bloqueos: 'Bloqueos', reflexion: 'Reflexión', nota: 'Nota' };
+            (appData.diario || []).forEach(e => {
+                if (!e.fecha || e.fecha < desde) return;
+                Object.keys(ED).forEach(k => { const t = e[k]; if (t && String(t).trim()) out.push({ fecha: e.fecha, fuente: 'Diario', proyectoId: null, etiqueta: ED[k], texto: String(t) }); });
+            });
+            appData.actividades.forEach(a => {
+                const f = a.fecha ? a.fecha.slice(0, 10) : '';
+                if (!f || f < desde) return;
+                if (a.limitacion && a.limitacion.trim()) out.push({ fecha: f, fuente: 'Actividad', proyectoId: a.proyectoId, etiqueta: 'Limitación · ' + a.nombre, texto: a.limitacion, area: a.area });
+                if (a.necesito && a.necesito.trim()) out.push({ fecha: f, fuente: 'Actividad', proyectoId: a.proyectoId, etiqueta: 'Necesito · ' + a.nombre, texto: a.necesito, area: a.area });
+            });
+            return out;
+        }
+
+        function csFraseCon(texto, palabras) {
+            const frases = String(texto).split(/[.!?\n;]+/).map(x => x.trim()).filter(Boolean);
+            const f = frases.find(fr => palabras.some(p => csNorm(fr).includes(p)));
+            const r = f || String(texto).trim();
+            return r.length > 150 ? r.slice(0, 147) + '…' : r;
+        }
+
+        function csDetectarPatrones() {
+            const hoy = hoyLocal(), desde = csFechaMenosDias(CS_VENTANA_DIAS);
+            const patrones = [];
+
+            // 1) Frases que se repiten en días distintos (lo que escribe en Gantt y Diario)
+            const fuentes = csFuentesTexto(desde);
+            Object.keys(CS_CATEGORIAS).forEach(cat => {
+                const C = CS_CATEGORIAS[cat];
+                const ev = fuentes.filter(s => C.palabras.some(p => csNorm(s.texto).includes(p)));
+                const dias = new Set(ev.map(e => e.fecha));
+                if (dias.size < 2) return;
+                const porProy = {};
+                ev.forEach(e => { if (e.proyectoId) porProy[e.proyectoId] = (porProy[e.proyectoId] || 0) + 1; });
+                const proyId = Object.keys(porProy).sort((a, b) => porProy[b] - porProy[a])[0];
+                const etapas = [...new Set(ev.map(e => e.area).filter(Boolean))];
+                ev.sort((a, b) => b.fecha.localeCompare(a.fecha));
+                patrones.push({
+                    id: 'txt_' + cat, tipo: 'texto', categoria: cat, icono: C.icono,
+                    titulo: C.nombre + ' aparece una y otra vez en lo que escribes',
+                    detalle: `En ${dias.size} días distintos (${[...new Set(ev.map(e => e.fuente))].join(', ')}).`,
+                    fuerza: dias.size * 2 + ev.length, proyectoId: proyId ? parseInt(proyId) : null, etapas,
+                    evidencia: ev.slice(0, 8).map(e => ({ fecha: e.fecha, donde: e.fuente + ' · ' + e.etiqueta, texto: csFraseCon(e.texto, C.palabras) })),
+                    accion: etapas[0] || '', ocurrio: 'Lo escribí en ' + dias.size + ' días: «' + csFraseCon(ev[0].texto, C.palabras) + '»'
+                });
+            });
+
+            // 2) Lo que pasa con las acciones (estructura)
+            appData.proyectos.forEach(p => {
+                const acts = appData.actividades.filter(a => a.proyectoId === p.id && a.fecha);
+                if (!acts.length) return;
+                const fechaA = a => a.fecha.slice(0, 10);
+
+                // 2a) Etapas que se acumulan sin completar
+                const porArea = {};
+                acts.forEach(a => { const ar = a.area || 'Sin etapa'; (porArea[ar] = porArea[ar] || []).push(a); });
+                Object.keys(porArea).forEach(ar => {
+                    const lista = porArea[ar];
+                    const pasadas = lista.filter(a => fechaA(a) < hoy && fechaA(a) >= desde);
+                    const vencidas = pasadas.filter(a => !a.completada);
+                    if (vencidas.length >= 3 || (vencidas.length >= 2 && pasadas.length && vencidas.length / pasadas.length >= 0.6)) {
+                        patrones.push({
+                            id: 'etapa_' + p.id + '_' + csNorm(ar).replace(/\W+/g, '_'), tipo: 'etapa', categoria: null, icono: '📍',
+                            titulo: `La etapa «${ar}» se te va acumulando`,
+                            detalle: `${vencidas.length} de ${pasadas.length} actividades de los últimos días quedaron sin hacer · ${p.nombre}`,
+                            fuerza: vencidas.length * 2, proyectoId: p.id, etapas: [ar],
+                            evidencia: vencidas.sort((x, y) => fechaA(y).localeCompare(fechaA(x))).slice(0, 8).map(a => ({ fecha: fechaA(a), donde: 'Actividad pendiente', texto: a.nombre })),
+                            accion: ar, ocurrio: `${vencidas.length} actividades de esta etapa quedaron sin hacer: ` + vencidas.slice(0, 3).map(a => a.nombre).join(', ')
+                        });
+                    }
+                });
+
+                // 2b) Actividades que se reprograman una y otra vez
+                const repro = acts.filter(a => (a.reprog || []).filter(r => (r.en || '') >= desde).length >= 2);
+                if (repro.length) {
+                    patrones.push({
+                        id: 'reprog_' + p.id, tipo: 'reprogramadas', categoria: null, icono: '🔁',
+                        titulo: repro.length === 1 ? `«${repro[0].nombre}» se ha movido varias veces` : `${repro.length} actividades se reprograman una y otra vez`,
+                        detalle: `Movidas de día 2 veces o más · ${p.nombre}`,
+                        fuerza: repro.reduce((n, a) => n + a.reprog.length, 0) * 2, proyectoId: p.id, etapas: [...new Set(repro.map(a => a.area).filter(Boolean))],
+                        evidencia: repro.slice(0, 8).map(a => ({ fecha: (a.reprog[a.reprog.length - 1] || {}).en || fechaA(a), donde: 'Se movió ' + a.reprog.length + ' veces', texto: a.nombre })),
+                        accion: repro[0].nombre, ocurrio: 'La moví de día varias veces sin hacerla: ' + repro.slice(0, 3).map(a => a.nombre).join(', ')
+                    });
+                }
+
+                // 2c) Días marcados como reprogramado / para revisar
+                const dias = (appData.ganttPlan && appData.ganttPlan[p.id] && appData.ganttPlan[p.id].dias) || {};
+                const fechasMarcadas = Object.keys(dias).filter(f => f >= desde && (dias[f].estado === 'reprogramado' || dias[f].estado === 'revisar')).sort();
+                if (fechasMarcadas.length >= 2) {
+                    const etapas = [...new Set(acts.filter(a => fechasMarcadas.includes(fechaA(a))).map(a => a.area).filter(Boolean))];
+                    patrones.push({
+                        id: 'diasrep_' + p.id, tipo: 'dias', categoria: null, icono: '📆',
+                        titulo: `${fechasMarcadas.length} días marcados como «reprogramado» o «para revisar»`,
+                        detalle: p.nombre, fuerza: fechasMarcadas.length * 2, proyectoId: p.id, etapas,
+                        evidencia: fechasMarcadas.slice(-8).reverse().map(f => ({ fecha: f, donde: 'Estado del día', texto: GANTT_ESTADOS_DIA[dias[f].estado] + (dias[f].costo ? ' · ' + dias[f].costo : '') })),
+                        accion: etapas[0] || p.nombre, ocurrio: `${fechasMarcadas.length} días quedaron reprogramados o para revisar.`
+                    });
+                }
+
+                // 2d) Un día de la semana en que casi nunca se cumple
+                const porDia = {};
+                acts.forEach(a => { const f = fechaA(a); if (f < hoy && f >= desde) (porDia[f] = porDia[f] || []).push(a); });
+                const sem = {};
+                Object.keys(porDia).forEach(f => {
+                    const wd = new Date(f + 'T00:00:00').getDay();
+                    const sinTerminar = porDia[f].some(a => !a.completada) && !(dias[f] && dias[f].estado === 'completado');
+                    sem[wd] = sem[wd] || { total: 0, falla: 0, fechas: [] };
+                    sem[wd].total++; if (sinTerminar) { sem[wd].falla++; sem[wd].fechas.push(f); }
+                });
+                Object.keys(sem).forEach(wd => {
+                    const s = sem[wd];
+                    if (s.total >= 3 && s.falla / s.total >= 0.66) {
+                        patrones.push({
+                            id: 'dsem_' + p.id + '_' + wd, tipo: 'diasemana', categoria: null, icono: '🗓️',
+                            titulo: `Los ${['domingos', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábados'][wd]} casi nunca se cumplen`,
+                            detalle: `${s.falla} de ${s.total} · ${p.nombre}`, fuerza: s.falla * 2, proyectoId: p.id, etapas: [],
+                            evidencia: s.fechas.slice(-8).reverse().map(f => ({ fecha: f, donde: 'Día sin terminar', texto: porDia[f].filter(a => !a.completada).map(a => a.nombre).join(', ') })),
+                            accion: 'Lo planificado para los ' + GANTT_DIAS_SEM[wd], ocurrio: `En ${s.falla} de ${s.total} ${GANTT_DIAS_SEM[wd]} quedó algo sin hacer.`
+                        });
+                    }
+                });
+            });
+
+            // Quita los que ya están registrados o descartados
+            const regs = new Set((appData.ganttCondiciones || []).map(c => c.patronId).filter(Boolean));
+            const desc = appData.patronesDescartados || {};
+            const visibles = patrones.filter(pt => !regs.has(pt.id) && !(desc[pt.id] !== undefined && pt.fuerza < desc[pt.id] + 4));
+            visibles.sort((a, b) => b.fuerza - a.fuerza);
+            return { visibles, registrados: patrones.filter(pt => regs.has(pt.id)) };
+        }
+
+        let _csCachePatrones = null;
+        function csPatrones() { if (!_csCachePatrones) _csCachePatrones = csDetectarPatrones(); return _csCachePatrones; }
+        function csBuscarPatron(id) { const r = csPatrones(); return r.visibles.concat(r.registrados).find(p => p.id === id) || null; }
+
+        function csActualizarInsignia() {
+            _csCachePatrones = null;
+            const n = csPatrones().visibles.length;
+            const el = document.getElementById('csInsignia');
+            if (el) { el.textContent = n ? ' ' + n : ''; el.style.cssText = n ? 'background:#E65100; color:#fff; border-radius:10px; padding:0 6px; font-size:0.7rem; margin-left:2px;' : ''; }
+        }
+
+        function csDescartarPatron(id) {
+            const p = csBuscarPatron(id); if (!p) return;
+            if (!appData.patronesDescartados) appData.patronesDescartados = {};
+            appData.patronesDescartados[id] = p.fuerza;
+            guardarDatos();
+            renderizarCondicionSistema();
+        }
+
+        // ---- Vista principal ----
+        function renderizarCondicionSistema() {
+            _csCachePatrones = null;
+            csActualizarInsignia();
+            const cont = document.getElementById('csPatrones');
+            if (!cont) return;
+            const { visibles } = csPatrones();
+            let html = `<div class="gx-titulo">🔍 Lo que veo que se repite</div>
+                <div class="gx-mini" style="margin-bottom:0.6rem;">Leo tu avance diario (Carta Gantt y Diario) y las palabras que escribes. Si algo se repite, probablemente falta una condición o un sistema. Tú decides si te sirve.</div>`;
+            if (!visibles.length) {
+                html += `<p style="font-size:0.88rem; color:#888; padding:0.6rem 0;">Todavía no veo patrones que se repitan. Mientras sigas anotando tu cierre del día en la Carta Gantt y tu Diario, iré mirando por ti. Mientras tanto puedes buscar tu condición conversando.</p>`;
+            }
+            visibles.forEach(p => {
+                const proy = p.proyectoId ? csNombreProyecto(p.proyectoId) : '';
+                html += `<div class="gx-etapa" style="border-left-color:var(--purple);">
+                    <div class="gx-etapa-top"><h4 style="color:var(--purple);">${p.icono} ${escG(p.titulo)}</h4></div>
+                    <div class="gx-mini">${escG(p.detalle)}${proy && p.tipo === 'texto' ? ' · ' + escG(proy) : ''}</div>
+                    <details style="margin:0.4rem 0;"><summary style="cursor:pointer; font-size:0.82rem; color:#555;">Ver lo que encontré</summary>
+                        <ul style="margin:0.4rem 0 0 1.1rem; font-size:0.82rem;">${p.evidencia.map(e => `<li><span style="color:#999;">${escG(fechaCortaG(e.fecha))} · ${escG(e.donde)}:</span> ${escG(e.texto)}</li>`).join('')}</ul>
+                    </details>
+                    <div class="gx-acciones" style="flex-wrap:wrap;">
+                        <button type="button" class="btn btn-primary btn-small" onclick="csIniciarConversacion('${p.id}')">💬 Buscar mi condición y sistema</button>
+                        <button type="button" class="btn btn-secondary btn-small" onclick="csAgregarComoCondicion('${p.id}')">➕ Agregar como condición</button>
+                        <button type="button" class="gx-link" onclick="csDescartarPatron('${p.id}')">🙈 No es esto</button>
+                    </div>
+                </div>`;
+            });
+            html += `<div class="gx-acciones" style="margin-top:0.6rem;"><button type="button" class="btn btn-secondary btn-small" onclick="csIniciarConversacion(null)">💬 Quiero conversar sobre algo que no logro sostener</button></div>`;
+            cont.innerHTML = html;
+            csRenderizarConversacion();
+            csRenderizarRegistro();
+        }
+
+        // ---- Registro (todas las condiciones y sistemas, de todos los proyectos) ----
+        function csRenderizarRegistro() {
+            const cont = document.getElementById('csRegistro');
+            if (!cont) return;
+            const lista = (appData.ganttCondiciones || []).slice().sort((x, y) => (y.fecha || '').localeCompare(x.fecha || '') || y.id - x.id);
+            let html = `<div class="gx-titulo" style="margin-top:1.4rem;">🧩 Mis condiciones y sistemas</div>
+                <div class="gx-acciones" style="margin-bottom:0.6rem;"><button type="button" class="btn btn-secondary btn-small" onclick="csAbrirModalCondicion(null)">＋ Nueva condición</button></div>`;
+            if (!lista.length) html += `<p style="font-size:0.85rem; color:#aaa;">Todavía no tienes condiciones registradas.</p>`;
+            lista.forEach(c => {
+                const proy = c.proyectoId ? csNombreProyecto(c.proyectoId) : 'General';
+                html += `<div class="gx-etapa" style="border-left-color:var(--gold);">
+                    <div class="gx-etapa-top"><h4>${escG(c.accion || 'Sin título')}</h4><div class="gx-chips">${chipG(proy, '#EEE8F7', '#4B168E')}${c.resultado ? chipG(c.resultado, '#f1f1f1', '#555') : ''}</div></div>
+                    ${c.fecha ? `<div class="gx-mini">${escG(fechaCortaG(c.fecha))}${c.fechaPrueba ? ' · prueba: ' + escG(fechaCortaG(c.fechaPrueba)) : ''}</div>` : ''}
+                    ${c.dificulto ? `<div class="gx-linea"><span class="gx-lbl">Qué lo dificulta</span>${escG(c.dificulto)}</div>` : ''}
+                    ${c.necesito ? `<div class="gx-linea"><span class="gx-lbl">Condición</span>${escG(c.necesito)}</div>` : ''}
+                    ${c.ajuste ? `<div class="gx-linea"><span class="gx-lbl">Sistema</span>${escG(c.ajuste)}</div>` : ''}
+                    <div class="gx-acciones"><button type="button" class="gx-link" onclick="csAbrirModalCondicion(${c.id})">✏️ Editar</button> <button type="button" class="gx-link" style="color:#c62828;" onclick="eliminarCondicionGantt(${c.id})">🗑️ Eliminar</button></div>
+                </div>`;
+            });
+            cont.innerHTML = html;
+        }
+
+        // ---- Modal para crear / editar una condición ----
+        let _csCondEditId = null, _csCondBorrador = null;
+        function csAbrirModalCondicion(idOBorrador) {
+            let c;
+            if (idOBorrador && typeof idOBorrador === 'object') { c = idOBorrador; _csCondEditId = null; _csCondBorrador = idOBorrador; }
+            else if (idOBorrador) { c = (appData.ganttCondiciones || []).find(x => x.id === idOBorrador) || {}; _csCondEditId = idOBorrador; _csCondBorrador = null; }
+            else { c = { fecha: hoyLocal(), resultado: 'Por medir' }; _csCondEditId = null; _csCondBorrador = null; }
+            document.getElementById('csCoProyecto').innerHTML = '<option value="">General (sin proyecto)</option>' + appData.proyectos.map(p => `<option value="${p.id}">${escG(p.nombre)}</option>`).join('');
+            document.getElementById('csCoProyecto').value = c.proyectoId == null ? '' : c.proyectoId;
+            ['fecha', 'accion', 'ocurrio', 'dificulto', 'necesito', 'ajuste', 'fechaPrueba', 'resultado'].forEach(k => { document.getElementById('csCo_' + k).value = c[k] || (k === 'resultado' ? 'Por medir' : ''); });
+            document.getElementById('csCoError').textContent = '';
+            abrirModal('modalCondicionCS');
+        }
+        function csGuardarModalCondicion() {
+            const v = k => document.getElementById('csCo_' + k).value.trim();
+            if (!v('accion') && !v('ocurrio') && !v('necesito')) { document.getElementById('csCoError').textContent = 'Escribe al menos la acción, qué ocurrió o la condición.'; return; }
+            const proy = document.getElementById('csCoProyecto').value;
+            const datos = { proyectoId: proy ? parseInt(proy) : null };
+            ['fecha', 'accion', 'ocurrio', 'dificulto', 'necesito', 'ajuste', 'fechaPrueba', 'resultado'].forEach(k => { datos[k] = v(k); });
+            if (!appData.ganttCondiciones) appData.ganttCondiciones = [];
+            if (_csCondEditId) {
+                const c = appData.ganttCondiciones.find(x => x.id === _csCondEditId);
+                if (c) Object.assign(c, datos);
+            } else {
+                const nuevo = Object.assign({ id: Date.now() }, _csCondBorrador || {}, datos);
+                appData.ganttCondiciones.push(nuevo);
+            }
+            _csCondEditId = null; _csCondBorrador = null;
+            guardarDatos();
+            cerrarModal('modalCondicionCS');
+            renderizarTodo();
+        }
+
+        function csAgregarComoCondicion(patronId) {
+            const p = csBuscarPatron(patronId); if (!p) return;
+            const C = p.categoria ? CS_CATEGORIAS[p.categoria] : null;
+            csAbrirModalCondicion({
+                proyectoId: p.proyectoId, fecha: hoyLocal(), accion: p.accion || '', ocurrio: p.ocurrio || '',
+                dificulto: C ? C.dificulta : '', necesito: C ? C.condicion : '', ajuste: C ? C.sistema : '',
+                resultado: 'Por medir', origen: 'patron', patronId: p.id
+            });
+        }
+
+        // ---- Conversación guiada ("encontrar la fuga") ----
+        let csConv = null;
+        const CS_PRIMERO = [
+            ['energia', 'Cansancio o falta de energía'], ['emocion', 'Miedo, duda o inseguridad'], ['claridad', 'No tenía claro qué hacer'],
+            ['tiempo', 'Se me llenó el día o me interrumpieron'], ['evitacion', 'Me puse a hacer otra cosa'], ['sobrecarga', 'Tenía demasiado a la vez'],
+            ['apoyo', 'Me faltó algo o a alguien'], ['perfeccionismo', 'Quería que quedara perfecto']
+        ];
+
+        function csIniciarConversacion(patronId) {
+            const p = patronId ? csBuscarPatron(patronId) : null;
+            csConv = {
+                modo: 'guiado', patronId: p ? p.id : null, proyectoId: p ? p.proyectoId : null,
+                categoria: p ? p.categoria : null, paso: 'accion',
+                accion: p ? (p.accion || '') : '', ocurrio: p ? (p.ocurrio || '') : '', dificulto: '', profundiza: '', condicion: '', sistema: '', prueba: '',
+                mensajes: [], iaCargando: false
+            };
+            if (p) {
+                csConv.mensajes.push({ rol: 'ia', txt: `Encontré esto en tu avance: «${p.titulo}». ${p.detalle} No es un error tuyo: es una señal de que a esta acción le falta algo para poder sostenerse. Vamos a descubrir qué.` });
+                if (!p.accion) { csConv.paso = 'accion'; csConv.mensajes.push({ rol: 'ia', txt: '¿Qué acción es la que más se ve afectada? Escríbela con tus palabras.' }); }
+                else if (p.categoria) { csConv.paso = 'profundiza'; csConv.mensajes.push({ rol: 'ia', txt: CS_CATEGORIAS[p.categoria].pregunta }); }
+                else { csConv.paso = 'primero'; csConv.mensajes.push({ rol: 'ia', txt: `Piensa en la última vez que tocaba hacer «${p.accion}». ¿Qué apareció primero?` }); }
+            } else {
+                csConv.mensajes.push({ rol: 'ia', txt: 'Vamos a encontrar qué le falta a esa acción para que puedas sostenerla. Primero cuéntame: ¿cuál es la acción que más te cuesta sostener?' });
+            }
+            csRenderizarConversacion();
+            const el = document.getElementById('csConversacion'); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function csResponderPaso(valor, visible) {
+            if (!csConv || csConv.iaCargando) return;
+            const txt = String(visible != null ? visible : valor).trim();
+            if (!txt) return;
+            csConv.mensajes.push({ rol: 'yo', txt });
+            if (csConv.modo === 'ia') { csEnviarIA(); return; }
+            const C = csConv.categoria ? CS_CATEGORIAS[csConv.categoria] : null;
+            const di = t => csConv.mensajes.push({ rol: 'ia', txt: t });
+            switch (csConv.paso) {
+                case 'accion':
+                    csConv.accion = txt;
+                    if (csConv.categoria) { csConv.paso = 'profundiza'; di(CS_CATEGORIAS[csConv.categoria].pregunta); }
+                    else { csConv.paso = 'primero'; di(`Gracias. Piensa en la última vez que tocaba hacer «${txt}». ¿Qué apareció primero?`); }
+                    break;
+                case 'primero': {
+                    const op = CS_PRIMERO.find(o => o[1] === txt);
+                    if (op) csConv.categoria = op[0];
+                    else { const norm = csNorm(txt); const hit = Object.keys(CS_CATEGORIAS).find(k => CS_CATEGORIAS[k].palabras.some(p => norm.includes(p))); if (hit) csConv.categoria = hit; }
+                    csConv.dificulto = txt;
+                    if (csConv.categoria) { csConv.paso = 'profundiza'; di(CS_CATEGORIAS[csConv.categoria].pregunta); }
+                    else { csConv.paso = 'profundiza'; di('Cuéntame un poco más: ¿qué sentiste en el cuerpo y qué te dijiste en ese momento?'); }
+                    break; }
+                case 'profundiza':
+                    csConv.profundiza = txt;
+                    if (!csConv.dificulto) csConv.dificulto = (C ? C.dificulta + ' ' : '') + txt;
+                    else if (!csConv.dificulto.includes(txt)) csConv.dificulto = csConv.dificulto + ' · ' + txt;
+                    csConv.paso = 'condicion';
+                    di('Lo que cuentas tiene sentido, y se repite porque algo falta, no porque tú falles. Una condición es lo que tiene que estar presente antes de la acción para que sea posible. ¿Qué tendría que estar presente para que hacerla fuera más fácil?');
+                    break;
+                case 'condicion':
+                    csConv.condicion = txt; csConv.paso = 'sistema';
+                    di('Esa es tu condición. Ahora, ¿qué sistema pequeño la sostendría sin depender de tu fuerza de voluntad? Piensa en cuándo, dónde, con qué señal y cuál es la versión mínima.');
+                    break;
+                case 'sistema':
+                    csConv.sistema = txt; csConv.paso = 'prueba';
+                    di('Perfecto. Un sistema se prueba, no se juzga. ¿Cuándo lo vas a probar por primera vez?');
+                    break;
+                case 'prueba': {
+                    const dias = { 'Mañana': 1, 'En 3 días': 3, 'En una semana': 7 }[txt];
+                    csConv.prueba = dias ? csFechaMasDias(dias) : (/^\d{4}-\d{2}-\d{2}$/.test(txt) ? txt : csFechaMasDias(3));
+                    csConv.paso = 'resumen';
+                    di('Aquí está tu condición y tu sistema. Revísalos, cámbiales las palabras y guárdalos cuando quieras.');
+                    break; }
+            }
+            csRenderizarConversacion();
+        }
+        function csFechaMasDias(n) { const d = new Date(); d.setDate(d.getDate() + n); return fechaHoraLocal(d).slice(0, 10); }
+
+        function csChipsPaso() {
+            if (!csConv) return [];
+            const C = csConv.categoria ? CS_CATEGORIAS[csConv.categoria] : null;
+            if (csConv.paso === 'primero') return CS_PRIMERO.map(o => o[1]);
+            if (csConv.paso === 'condicion' && C) return C.opcionesCondicion;
+            if (csConv.paso === 'sistema' && C) return C.opcionesSistema;
+            if (csConv.paso === 'prueba') return ['Mañana', 'En 3 días', 'En una semana'];
+            return [];
+        }
+
+        function csRenderizarConversacion() {
+            const cont = document.getElementById('csConversacion');
+            if (!cont) return;
+            if (!csConv) { cont.innerHTML = ''; return; }
+            const burbuja = m => `<div style="display:flex; justify-content:${m.rol === 'yo' ? 'flex-end' : 'flex-start'}; margin-bottom:0.5rem;">
+                <div style="max-width:88%; padding:0.6rem 0.8rem; border-radius:14px; font-size:0.88rem; line-height:1.45; white-space:pre-wrap; ${m.rol === 'yo' ? 'background:var(--purple); color:#fff; border-bottom-right-radius:4px;' : 'background:#F3EEFA; color:#333; border-bottom-left-radius:4px;'}">${escG(m.txt)}</div></div>`;
+            let html = `<div style="border:2px solid #e0d4f7; border-radius:14px; padding:0.9rem; margin-top:1.2rem; background:#fff;">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; margin-bottom:0.6rem; flex-wrap:wrap;">
+                    <div class="gx-titulo" style="margin:0;">💬 Mi condición y sistema</div>
+                    <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+                        ${csConv.modo === 'guiado' && csConv.paso !== 'resumen' ? `<button type="button" class="btn btn-secondary btn-small" onclick="csCambiarAModoIA()">✨ Conversar con la IA</button>` : ''}
+                        <button type="button" class="gx-link" onclick="csCerrarConversacion()">✕ Cerrar</button>
+                    </div></div>`;
+            html += csConv.mensajes.map(burbuja).join('');
+            if (csConv.iaCargando) html += `<div class="gx-mini" style="margin:0.4rem 0;">Pensando contigo…</div>`;
+            if (csConv.iaAviso) html += `<div style="background:#FFF4D6; border-radius:10px; padding:0.6rem; font-size:0.82rem; margin:0.5rem 0;">${escG(csConv.iaAviso)}</div>`;
+            if (csConv.paso === 'resumen') {
+                const proys = appData.proyectos;
+                html += `<div class="gx-form">
+                    <label class="gx-lbl">Acción</label><input id="csRes_accion" class="form-input" value="${escG(csConv.accion)}">
+                    <label class="gx-lbl">Qué la dificulta</label><textarea id="csRes_dificulto" class="form-textarea" style="min-height:54px;">${escG(csConv.dificulto)}</textarea>
+                    <label class="gx-lbl">Mi condición (lo que debe estar presente)</label><textarea id="csRes_condicion" class="form-textarea" style="min-height:54px;">${escG(csConv.condicion)}</textarea>
+                    <label class="gx-lbl">Mi sistema (lo que la sostiene)</label><textarea id="csRes_sistema" class="form-textarea" style="min-height:54px;">${escG(csConv.sistema)}</textarea>
+                    <label class="gx-lbl">Lo pruebo el</label><input type="date" id="csRes_prueba" class="form-input" value="${escG(csConv.prueba)}">
+                    <label class="gx-lbl">Proyecto</label>
+                    <select id="csRes_proyecto" class="form-select"><option value="">General (sin proyecto)</option>${proys.map(p => `<option value="${p.id}" ${csConv.proyectoId === p.id ? 'selected' : ''}>${escG(p.nombre)}</option>`).join('')}</select>
+                    <label style="display:flex; align-items:center; gap:6px; font-size:0.82rem; margin-top:0.5rem;"><input type="checkbox" id="csRes_agendar" checked style="width:16px;height:16px;"> Agregar a mi agenda «Probar mi sistema» ese día</label>
+                    <div class="gx-acciones"><button type="button" class="btn btn-primary btn-small" onclick="csGuardarResultado()">💾 Guardar como condición y sistema</button></div>
+                </div>`;
+            } else {
+                const chips = csChipsPaso();
+                if (chips.length) html += `<div style="display:flex; flex-wrap:wrap; gap:0.35rem; margin:0.5rem 0;">${chips.map((t, i) => `<button type="button" onclick="csResponderPaso(csChipsPaso()[${i}])" style="border:1px solid var(--purple); background:#fff; color:var(--purple); border-radius:16px; padding:5px 11px; font-size:0.8rem; cursor:pointer;">${escG(t)}</button>`).join('')}</div>`;
+                if (csConv.paso === 'prueba') html += `<div style="display:flex; gap:0.4rem; align-items:center; margin-bottom:0.4rem;"><span class="gx-mini">o elige una fecha:</span><input type="date" id="csFechaPrueba" class="form-input" style="max-width:170px;" onchange="csResponderPaso(this.value)"></div>`;
+                html += `<div style="display:flex; gap:0.4rem; align-items:flex-end;">
+                    <textarea id="csEntrada" class="form-textarea" style="min-height:48px; flex:1;" placeholder="${csConv.paso === 'condicion' || csConv.paso === 'sistema' ? 'Escribe con tus palabras o elige una opción de arriba' : 'Escribe aquí…'}" onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault(); csEnviarTexto();}"></textarea>
+                    <button type="button" class="btn btn-primary btn-small" onclick="csEnviarTexto()">Enviar</button></div>`;
+            }
+            html += `</div>`;
+            cont.innerHTML = html;
+        }
+        function csEnviarTexto() { const t = document.getElementById('csEntrada'); if (t && t.value.trim()) csResponderPaso(t.value.trim()); }
+        function csCerrarConversacion() { csConv = null; csRenderizarConversacion(); }
+
+        function csGuardarResultado() {
+            if (!csConv) return;
+            const v = id => document.getElementById(id).value.trim();
+            const proy = document.getElementById('csRes_proyecto').value;
+            if (!v('csRes_condicion') && !v('csRes_sistema')) { alert('Escribe al menos tu condición o tu sistema.'); return; }
+            if (!appData.ganttCondiciones) appData.ganttCondiciones = [];
+            const cond = {
+                id: Date.now(), proyectoId: proy ? parseInt(proy) : null, fecha: hoyLocal(),
+                accion: v('csRes_accion'), ocurrio: csConv.ocurrio || '', dificulto: v('csRes_dificulto'), necesito: v('csRes_condicion'), ajuste: v('csRes_sistema'),
+                fechaPrueba: v('csRes_prueba'), resultado: 'Por medir', origen: csConv.modo === 'ia' ? 'conversacion-ia' : 'conversacion'
+            };
+            if (csConv.patronId) cond.patronId = csConv.patronId;
+            appData.ganttCondiciones.push(cond);
+            if (document.getElementById('csRes_agendar').checked && cond.fechaPrueba) {
+                appData.actividades.push({
+                    id: Date.now() + 1, proyectoId: cond.proyectoId, area: 'Condiciones y sistemas', nombre: 'Probar mi sistema: ' + (cond.ajuste.length > 60 ? cond.ajuste.slice(0, 57) + '…' : cond.ajuste),
+                    creencia: '', fecha: cond.fechaPrueba + 'T09:00', duracion: 15, unidad: 'min', tipo: 'laboral', prioridad: 'media', ritualId: null,
+                    limitacion: '', necesito: '', subtareas: [], completada: false, creado: new Date().toISOString()
+                });
+            }
+            if (!appData.conversacionesCondicion) appData.conversacionesCondicion = [];
+            appData.conversacionesCondicion.push({ id: cond.id, fecha: hoyLocal(), patronId: csConv.patronId, modo: csConv.modo, mensajes: csConv.mensajes.slice(-40) });
+            if (appData.conversacionesCondicion.length > 30) appData.conversacionesCondicion = appData.conversacionesCondicion.slice(-30);
+            csConv = null;
+            guardarDatos();
+            renderizarTodo();
+            alert('✓ Guardado. Tu condición y tu sistema quedaron en «Mis condiciones y sistemas» y en la Carta Gantt (pestaña 🧩 Condiciones).');
+        }
+
+        // ---- Modo IA (opcional): usa una función de Supabase que llama a la IA ----
+        function csCambiarAModoIA() {
+            if (!csConv) return;
+            if (!appData.config) appData.config = {};
+            if (!appData.config.consentimientoIA) {
+                if (!confirm('Para conversar con la IA, tus mensajes y unos extractos de lo que escribiste en tu avance se envían a un servicio de inteligencia artificial (Anthropic) solo para esta conversación. No se usan para nada más.\n\n¿Aceptas?')) return;
+                appData.config.consentimientoIA = true; guardarDatos();
+            }
+            csConv.modo = 'ia'; csConv.iaAviso = '';
+            if (!csConv.mensajes.some(m => m.rol === 'yo')) { csConv.mensajes.push({ rol: 'yo', txt: csConv.accion ? `Quiero entender qué le falta a «${csConv.accion}» para poder sostenerla.` : 'Quiero entender qué me falta para sostener una acción.' }); }
+            csRenderizarConversacion();
+            csEnviarIA();
+        }
+        function csContextoParaIA() {
+            const p = csConv && csConv.patronId ? csBuscarPatron(csConv.patronId) : null;
+            return {
+                accion: csConv.accion || '', patron: p ? { titulo: p.titulo, detalle: p.detalle, evidencia: p.evidencia.slice(0, 8) } : null,
+                nombre: (appData.config && appData.config.nombreUsuario) || ''
+            };
+        }
+        async function csEnviarIA() {
+            if (!csConv) return;
+            csConv.iaCargando = true; csConv.iaAviso = ''; csRenderizarConversacion();
+            try {
+                const body = { messages: csConv.mensajes.map(m => ({ role: m.rol === 'yo' ? 'user' : 'assistant', content: m.txt })).slice(-24), contexto: csContextoParaIA() };
+                const { data, error } = await sb.functions.invoke('condicion-ia', { body });
+                if (error || !data || !data.texto) throw new Error(error && error.message ? error.message : 'sin respuesta');
+                let texto = String(data.texto);
+                const m = texto.match(/```json\s*([\s\S]*?)```/);
+                if (m) {
+                    try {
+                        const r = JSON.parse(m[1]);
+                        csConv.accion = r.accion || csConv.accion; csConv.dificulto = r.dificulta || r.dificulto || csConv.dificulto;
+                        csConv.condicion = r.condicion || ''; csConv.sistema = r.sistema || '';
+                        csConv.prueba = csFechaMasDias(parseInt(r.prueba_en_dias) || 3);
+                        csConv.paso = 'resumen';
+                    } catch (e) {}
+                    texto = texto.replace(m[0], '').trim();
+                }
+                if (texto) csConv.mensajes.push({ rol: 'ia', txt: texto });
+            } catch (e) {
+                csConv.modo = 'guiado'; csConv.mensajes.pop();
+                csConv.iaAviso = 'La conversación con la IA todavía no está activada en tu cuenta (' + (e && e.message ? e.message : 'error') + '). Seguimos con las preguntas guiadas, que funcionan igual de bien.';
+            }
+            csConv.iaCargando = false;
+            csRenderizarConversacion();
+        }
+
+        // ---- Anota cuando una actividad se mueve de día (para detectar reprogramaciones) ----
+        function csAnotarReprogramacion(act, fechaNueva) {
+            try {
+                if (!act || !act.fecha || !fechaNueva) return;
+                const de = act.fecha.slice(0, 10), a = String(fechaNueva).slice(0, 10);
+                if (de === a || act.completada) return;
+                if (!Array.isArray(act.reprog)) act.reprog = [];
+                act.reprog.push({ de, a, en: hoyLocal() });
+                if (act.reprog.length > 20) act.reprog = act.reprog.slice(-20);
+            } catch (e) {}
+        }
+
+        function irAVistaCS(vista) {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', (t.getAttribute('onclick') || '').includes("'" + vista + "'")));
+            const el = document.getElementById(vista); if (el) el.classList.add('active');
+            if (vista === 'condicionSistema') renderizarCondicionSistema();
+            window.scrollTo(0, 0);
+        }
+
+        // Aviso dentro de la Carta Gantt (pestaña Condiciones)
+        function csAvisoParaGantt(proyectoId) {
+            const { visibles } = csPatrones();
+            const mios = visibles.filter(p => p.proyectoId === proyectoId || p.tipo === 'texto');
+            if (!mios.length) return '';
+            return `<div class="gx-sugeridas" style="margin-bottom:0.8rem;"><span class="gx-lbl">🔍 Veo ${mios.length} patrón${mios.length > 1 ? 'es' : ''} que se repite${mios.length > 1 ? 'n' : ''}</span>
+                ${mios.slice(0, 3).map(p => `<div class="gx-sug"><div>${p.icono} <strong>${escG(p.titulo)}</strong><br><span class="gx-mini">${escG(p.detalle)}</span></div><button type="button" class="gx-link" onclick="csAgregarComoCondicion('${p.id}')">＋ Agregar</button></div>`).join('')}
+                <div class="gx-acciones"><button type="button" class="btn btn-primary btn-small" onclick="irAVistaCS('condicionSistema')">💬 Ver todo y buscar mi condición y sistema</button></div></div>`;
         }
 
         // SUPABASE
